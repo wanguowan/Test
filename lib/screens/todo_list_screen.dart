@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/todo.dart';
+import '../helpers/database_helper.dart';
 
 class TodoListScreen extends StatefulWidget {
   const TodoListScreen({super.key});
@@ -11,30 +12,45 @@ class TodoListScreen extends StatefulWidget {
 class _TodoListScreenState extends State<TodoListScreen> {
   final List<Todo> _todos = [];
   final _textController = TextEditingController();
+  final _dbHelper = DatabaseHelper.instance;
 
-  void _addTodo(String title) {
+  @override
+  void initState() {
+    super.initState();
+    _loadTodos();
+  }
+
+  Future<void> _loadTodos() async {
+    final todos = await _dbHelper.getTodos();
+    setState(() {
+      _todos.clear();
+      _todos.addAll(todos);
+    });
+  }
+
+  Future<void> _addTodo(String title) async {
     if (title.isEmpty) return;
 
-    setState(() {
-      _todos.add(Todo(
-        id: DateTime.now().toString(),
-        title: title,
-      ));
-    });
+    final todo = Todo(
+      id: DateTime.now().toString(),
+      title: title,
+    );
+
+    await _dbHelper.insertTodo(todo);
+    await _loadTodos();
     _textController.clear();
   }
 
-  void _toggleTodo(String id) {
-    setState(() {
-      final todo = _todos.firstWhere((todo) => todo.id == id);
-      todo.isCompleted = !todo.isCompleted;
-    });
+  Future<void> _toggleTodo(String id) async {
+    final todo = _todos.firstWhere((todo) => todo.id == id);
+    todo.isCompleted = !todo.isCompleted;
+    await _dbHelper.updateTodo(todo);
+    await _loadTodos();
   }
 
-  void _deleteTodo(String id) {
-    setState(() {
-      _todos.removeWhere((todo) => todo.id == id);
-    });
+  Future<void> _deleteTodo(String id) async {
+    await _dbHelper.deleteTodo(id);
+    await _loadTodos();
   }
 
   @override
