@@ -5,6 +5,8 @@ class Todo {
   int orderIndex;
   bool isTimerRunning;
   int? remainingSeconds;
+  int completedPomodoros;
+  double currentProgress;
 
   Todo({
     required this.id,
@@ -13,5 +15,7 @@ class Todo {
     required this.orderIndex,
     this.isTimerRunning = false,
     this.remainingSeconds,
+    this.completedPomodoros = 0,
+    this.currentProgress = 0.0,
   });
 } 

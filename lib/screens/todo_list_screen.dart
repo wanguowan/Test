@@ -30,15 +30,31 @@ class _TodoListScreenState extends State<TodoListScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       bool needsUpdate = false;
       final defaultTime = await _settingsHelper.getPomodoroTime();
+      final totalSeconds = defaultTime * 60;
+
       for (var todo in _todos) {
         if (todo.isTimerRunning && (todo.remainingSeconds ?? 0) > 0) {
-          todo.remainingSeconds = (todo.remainingSeconds ?? (defaultTime * 60)) - 1;
+          todo.remainingSeconds = (todo.remainingSeconds ?? totalSeconds) - 1;
+          
+          // 计算进度
+          todo.currentProgress = 1.0 - (todo.remainingSeconds ?? 0) / totalSeconds;
+          
           if ((todo.remainingSeconds ?? 0) <= 0) {
             todo.isTimerRunning = false;
             todo.remainingSeconds = 0;
+            todo.completedPomodoros++;  // 增加完成的番茄钟数量
+            todo.currentProgress = 0.0;  // 重置进度
+            
+            // 更新数据库中的番茄钟计数
+            await _dbHelper.updatePomodoroProgress(
+              todo.id,
+              todo.completedPomodoros,
+              todo.currentProgress
+            );
           }
+          
           needsUpdate = true;
-          _dbHelper.updateTimer(todo.id, todo.isTimerRunning, todo.remainingSeconds ?? 0);
+          await _dbHelper.updateTimer(todo.id, todo.isTimerRunning, todo.remainingSeconds ?? 0);
         }
       }
       if (needsUpdate) {
@@ -120,6 +136,35 @@ class _TodoListScreenState extends State<TodoListScreen> {
     final minutes = seconds ~/ 60;
     final remainingSeconds = seconds % 60;
     return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildPomodoroIndicator(Todo todo) {
+    if (todo.completedPomodoros == 0 && todo.currentProgress == 0.0) {
+      return const SizedBox.shrink();
+    }
+
+    return Row(
+      children: [
+        // 显示完整番茄钟
+        if (todo.completedPomodoros > 0)
+          Row(
+            children: [
+              Text('🍅' * todo.completedPomodoros),  // 使用重复的表情符号
+              const SizedBox(width: 4),
+            ],
+          ),
+        // 显示进行中的番茄钟进度
+        if (todo.currentProgress > 0.0)
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              value: todo.currentProgress,
+              strokeWidth: 2,
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -210,6 +255,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
                           ),
                         ),
                       ),
+                      _buildPomodoroIndicator(todo),  // 添加番茄钟指示器
                       if (!todo.isCompleted) ...[
                         Text(_formatTime(todo.remainingSeconds)),
                         IconButton(

@@ -5,7 +5,7 @@ import '../helpers/settings_helper.dart';
 
 class DatabaseHelper {
   static const _databaseName = "todo_database.db";
-  static const _databaseVersion = 3;
+  static const _databaseVersion = 4;
   static const table = 'todos';
 
   DatabaseHelper._privateConstructor();
@@ -37,7 +37,9 @@ class DatabaseHelper {
         isCompleted INTEGER NOT NULL,
         orderIndex INTEGER NOT NULL,
         isTimerRunning INTEGER NOT NULL DEFAULT 0,
-        remainingSeconds INTEGER NOT NULL DEFAULT ${SettingsHelper.defaultPomodoroMinutes * 60}
+        remainingSeconds INTEGER NOT NULL DEFAULT ${SettingsHelper.defaultPomodoroMinutes * 60},
+        completedPomodoros INTEGER NOT NULL DEFAULT 0,
+        currentProgress REAL NOT NULL DEFAULT 0.0
       )
     ''');
   }
@@ -49,6 +51,10 @@ class DatabaseHelper {
     if (oldVersion < 3) {
       await db.execute('ALTER TABLE $table ADD COLUMN isTimerRunning INTEGER NOT NULL DEFAULT 0');
       await db.execute('ALTER TABLE $table ADD COLUMN remainingSeconds INTEGER NOT NULL DEFAULT ${SettingsHelper.defaultPomodoroMinutes * 60}');
+    }
+    if (oldVersion < 4) {
+      await db.execute('ALTER TABLE $table ADD COLUMN completedPomodoros INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE $table ADD COLUMN currentProgress REAL NOT NULL DEFAULT 0.0');
     }
   }
 
@@ -63,6 +69,8 @@ class DatabaseHelper {
         'orderIndex': todo.orderIndex,
         'isTimerRunning': todo.isTimerRunning ? 1 : 0,
         'remainingSeconds': todo.remainingSeconds,
+        'completedPomodoros': todo.completedPomodoros,
+        'currentProgress': todo.currentProgress,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -82,6 +90,8 @@ class DatabaseHelper {
         orderIndex: maps[i]['orderIndex'],
         isTimerRunning: maps[i]['isTimerRunning'] == 1,
         remainingSeconds: maps[i]['remainingSeconds'] ?? (SettingsHelper.defaultPomodoroMinutes * 60),
+        completedPomodoros: maps[i]['completedPomodoros'] ?? 0,
+        currentProgress: maps[i]['currentProgress'] ?? 0.0,
       );
     });
   }
@@ -93,6 +103,8 @@ class DatabaseHelper {
       {
         'title': todo.title,
         'isCompleted': todo.isCompleted ? 1 : 0,
+        'completedPomodoros': todo.completedPomodoros,
+        'currentProgress': todo.currentProgress,
       },
       where: 'id = ?',
       whereArgs: [todo.id],
@@ -139,6 +151,19 @@ class DatabaseHelper {
       {
         'isTimerRunning': isRunning ? 1 : 0,
         'remainingSeconds': remainingSeconds,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> updatePomodoroProgress(String id, int completedPomodoros, double currentProgress) async {
+    Database db = await database;
+    await db.update(
+      table,
+      {
+        'completedPomodoros': completedPomodoros,
+        'currentProgress': currentProgress,
       },
       where: 'id = ?',
       whereArgs: [id],
