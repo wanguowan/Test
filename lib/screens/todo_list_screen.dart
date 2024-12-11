@@ -88,8 +88,27 @@ class _TodoListScreenState extends State<TodoListScreen> {
   Future<void> _toggleTodo(String id) async {
     final todo = _todos.firstWhere((todo) => todo.id == id);
     todo.isCompleted = !todo.isCompleted;
+    
+    // 重新排序列表
+    setState(() {
+      _todos.sort((a, b) {
+        if (a.isCompleted == b.isCompleted) {
+          // 如果完成状态相同，保持原有顺序
+          return a.orderIndex.compareTo(b.orderIndex);
+        }
+        // 未完成的排在前面
+        return a.isCompleted ? 1 : -1;
+      });
+      
+      // 更新所有项目的 orderIndex
+      for (int i = 0; i < _todos.length; i++) {
+        _todos[i].orderIndex = i;
+      }
+    });
+
+    // 更新数据库
     await _dbHelper.updateTodo(todo);
-    await _loadTodos();
+    await _dbHelper.reorderTodos(_todos);
   }
 
   Future<void> _deleteTodo(String id) async {
