@@ -84,15 +84,30 @@ class _TodoListScreenState extends State<TodoListScreen> {
   Future<void> _toggleTimer(String id) async {
     final todo = _todos.firstWhere((todo) => todo.id == id);
     final pomodoroTime = await _settingsHelper.getPomodoroTime();
+    
     setState(() {
+      if (!todo.isTimerRunning) {
+        for (var otherTodo in _todos) {
+          if (otherTodo.id != id && otherTodo.isTimerRunning) {
+            otherTodo.isTimerRunning = false;
+            _dbHelper.updateTimer(
+              otherTodo.id,
+              false,
+              otherTodo.remainingSeconds ?? (pomodoroTime * 60)
+            );
+          }
+        }
+      }
+      
       todo.isTimerRunning = !todo.isTimerRunning;
       if (!todo.isTimerRunning && (todo.remainingSeconds == null || todo.remainingSeconds == 0)) {
         todo.remainingSeconds = pomodoroTime * 60;
       }
     });
+
     await _dbHelper.updateTimer(
-      todo.id, 
-      todo.isTimerRunning, 
+      todo.id,
+      todo.isTimerRunning,
       todo.remainingSeconds ?? (pomodoroTime * 60)
     );
   }
