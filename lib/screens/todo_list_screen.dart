@@ -17,6 +17,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
   final _textController = TextEditingController();
   final _dbHelper = DatabaseHelper.instance;
   final _settingsHelper = SettingsHelper.instance;
+  final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
   Timer? _timer;
 
   @override
@@ -65,10 +66,32 @@ class _TodoListScreenState extends State<TodoListScreen> {
 
   Future<void> _loadTodos() async {
     final todos = await _dbHelper.getTodos();
-    setState(() {
+    
+    // 如果列表已经有项目，先全部移除
+    if (_todos.isNotEmpty) {
+      final length = _todos.length;
       _todos.clear();
+      for (int i = length - 1; i >= 0; i--) {
+        _listKey.currentState?.removeItem(
+          i,
+          (context, animation) => const SizedBox.shrink(),
+          duration: const Duration(milliseconds: 0),
+        );
+      }
+    }
+
+    // 添加新的项目
+    setState(() {
       _todos.addAll(todos);
     });
+
+    // 逐个插入新项目
+    for (int i = 0; i < todos.length; i++) {
+      _listKey.currentState?.insertItem(
+        i,
+        duration: const Duration(milliseconds: 300),
+      );
+    }
   }
 
   Future<void> _addTodo(String title) async {
@@ -81,34 +104,113 @@ class _TodoListScreenState extends State<TodoListScreen> {
     );
 
     await _dbHelper.insertTodo(todo);
-    await _loadTodos();
+    
+    // 直接添加到列表并显示动画
+    setState(() {
+      _todos.add(todo);
+      _listKey.currentState?.insertItem(
+        _todos.length - 1,
+        duration: const Duration(milliseconds: 300),
+      );
+    });
+    
     _textController.clear();
   }
 
   Future<void> _toggleTodo(String id) async {
     final todo = _todos.firstWhere((todo) => todo.id == id);
+    final oldIndex = _todos.indexOf(todo);
     todo.isCompleted = !todo.isCompleted;
-    
-    // 重新排序列表
+
+    // 创建新的排序列表
+    final newTodos = List<Todo>.from(_todos);
+    newTodos.sort((a, b) {
+      if (a.isCompleted == b.isCompleted) {
+        return a.orderIndex.compareTo(b.orderIndex);
+      }
+      return a.isCompleted ? 1 : -1;
+    });
+
+    // 计算项目的新位置
+    final newIndex = newTodos.indexWhere((t) => t.id == todo.id);
+
+    // 使用动画移动项目
     setState(() {
-      _todos.sort((a, b) {
-        if (a.isCompleted == b.isCompleted) {
-          // 如果完成状态相同，保持原有顺序
-          return a.orderIndex.compareTo(b.orderIndex);
-        }
-        // 未完成的排在前面
-        return a.isCompleted ? 1 : -1;
-      });
-      
+      // 从旧位置移除
+      _todos.removeAt(oldIndex);
+      _listKey.currentState?.removeItem(
+        oldIndex,
+        (context, animation) => _buildItem(_todos[oldIndex], animation),
+        duration: const Duration(milliseconds: 300),
+      );
+
+      // 插入到新位置
+      _todos.insert(newIndex, todo);
+      _listKey.currentState?.insertItem(
+        newIndex,
+        duration: const Duration(milliseconds: 300),
+      );
+
       // 更新所有项目的 orderIndex
       for (int i = 0; i < _todos.length; i++) {
         _todos[i].orderIndex = i;
       }
     });
 
-    // 更新数据库
     await _dbHelper.updateTodo(todo);
     await _dbHelper.reorderTodos(_todos);
+  }
+
+  Widget _buildItem(Todo item, Animation<double> animation) {
+    return SlideTransition(
+      position: animation.drive(
+        Tween(
+          begin: const Offset(-1, 0),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: Curves.easeOutCubic)),
+      ),
+      child: FadeTransition(
+        opacity: animation,
+        child: SizeTransition(
+          sizeFactor: animation,
+          child: ListTile(
+            key: Key(item.id),
+            leading: Checkbox(
+              value: item.isCompleted,
+              onChanged: (_) => _toggleTodo(item.id),
+            ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item.title,
+                    style: TextStyle(
+                      decoration: item.isCompleted
+                          ? TextDecoration.lineThrough
+                          : null,
+                    ),
+                  ),
+                ),
+                _buildPomodoroIndicator(item),
+                if (!item.isCompleted) ...[
+                  Text(_formatTime(item.remainingSeconds)),
+                  IconButton(
+                    icon: Icon(
+                      item.isTimerRunning ? Icons.pause : Icons.play_arrow,
+                    ),
+                    onPressed: () => _toggleTimer(item.id),
+                  ),
+                ],
+              ],
+            ),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: () => _deleteTodo(item.id),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteTodo(String id) async {
@@ -242,55 +344,11 @@ class _TodoListScreenState extends State<TodoListScreen> {
             ),
           ),
           Expanded(
-            child: ReorderableListView.builder(
-              itemCount: _todos.length,
-              onReorder: (oldIndex, newIndex) async {
-                setState(() {
-                  if (oldIndex < newIndex) {
-                    newIndex -= 1;
-                  }
-                  final Todo item = _todos.removeAt(oldIndex);
-                  _todos.insert(newIndex, item);
-                });
-                await _dbHelper.reorderTodos(_todos);
-              },
-              itemBuilder: (context, index) {
-                final todo = _todos[index];
-                return ListTile(
-                  key: Key(todo.id),
-                  leading: Checkbox(
-                    value: todo.isCompleted,
-                    onChanged: (_) => _toggleTodo(todo.id),
-                  ),
-                  title: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          todo.title,
-                          style: TextStyle(
-                            decoration: todo.isCompleted
-                                ? TextDecoration.lineThrough
-                                : null,
-                          ),
-                        ),
-                      ),
-                      _buildPomodoroIndicator(todo),  // 添加番茄钟指示器
-                      if (!todo.isCompleted) ...[
-                        Text(_formatTime(todo.remainingSeconds)),
-                        IconButton(
-                          icon: Icon(
-                            todo.isTimerRunning ? Icons.pause : Icons.play_arrow,
-                          ),
-                          onPressed: () => _toggleTimer(todo.id),
-                        ),
-                      ],
-                    ],
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () => _deleteTodo(todo.id),
-                  ),
-                );
+            child: AnimatedList(
+              key: _listKey,
+              initialItemCount: _todos.length,
+              itemBuilder: (context, index, animation) {
+                return _buildItem(_todos[index], animation);
               },
             ),
           ),
