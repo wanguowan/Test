@@ -115,13 +115,26 @@ class _TodoListScreenState extends State<TodoListScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const SettingsScreen(),
                 ),
               );
+              await _loadTodos();
+              for (var todo in _todos) {
+                if (!todo.isCompleted && !todo.isTimerRunning) {
+                  final pomodoroTime = await _settingsHelper.getPomodoroTime();
+                  todo.remainingSeconds = pomodoroTime * 60;
+                  await _dbHelper.updateTimer(
+                    todo.id, 
+                    todo.isTimerRunning, 
+                    todo.remainingSeconds ?? (pomodoroTime * 60)
+                  );
+                }
+              }
+              setState(() {});
             },
           ),
         ],
