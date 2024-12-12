@@ -333,6 +333,11 @@ class _TodoListScreenState extends State<TodoListScreen> {
                       hintText: '添加新的待办事项',
                       border: OutlineInputBorder(),
                     ),
+                    onSubmitted: (value) {
+                      if (value.isNotEmpty) {
+                        _addTodo(value);
+                      }
+                    },
                   ),
                 ),
                 const SizedBox(width: 16),
